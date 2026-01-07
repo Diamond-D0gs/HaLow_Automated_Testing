@@ -11,8 +11,11 @@ from statistics import mean
 from typing import Optional
 
 CLIENT_HALOW_IP = '169.254.1.1'
-SERVER_HALOW_IP = '169.254.0.225'
+SERVER_HALOW_IP = '169.254.90.55'
 UBUS_JSONRPC_URL = f'http://{CLIENT_HALOW_IP}/ubus'
+
+BOARD_NAMES = ['Heltec,HT-HD01-V1', 'alfa-network,ahuc7292u']
+RADIO_NAMES = ['wlan0', 'mesh0']
 
 USERNAMES = ['root', 'admin']
 PASSWORDS = ['heltec.org', 'admin']
@@ -20,16 +23,118 @@ PASSWORDS = ['heltec.org', 'admin']
 UBUS_RETRY_LIMIT = 5
 UBUS_REPORT_RATE = 0.1
 
-IPERF3_TCP_TEST_COUNT = 5
+IPERF3_TCP_TEST_COUNT = 6
 IPERF3_TCP_TEST_DURATION_SEC = 30
-IPERF3_TCP_TEST_WINDOWS = [75, 75, 100, 100]
+IPERF3_TCP_TEST_WINDOWS = [[75, 75, 100, 100], [32, 28, 22]]
 
-IPERF3_UDP_TEST_COUNT = 5
+IPERF3_UDP_TEST_COUNT = 6
 IPERF3_UDP_TEST_DURATION_SEC = 30
-IPERF3_UDP_TEST_THROUGHPUTS = [2.28, 5.3, 11.4, 14.8]
+IPERF3_UDP_TEST_THROUGHPUTS = [[2.28, 5.3, 11.4, 14.8], [1.6, 2.8, 4.0]]
 
-ICMP_PING_TEST_SAMPLES = 100
+ICMP_PING_TEST_SAMPLES = 110
 ICMP_PING_TEST_BATCH_SIZE = 10
+
+NRC_TO_HALOW_CHANNEL = {
+    # 1 MHz Bandwidth Channels
+    1: 1,    # 902.5 MHz
+    3: 3,    # 903.5 MHz
+    5: 5,    # 904.5 MHz
+    7: 7,    # 905.5 MHz
+    9: 9,    # 906.5 MHz
+    11: 11,  # 907.5 MHz
+    36: 13,  # 908.5 MHz
+    37: 15,  # 909.5 MHz
+    38: 17,  # 910.5 MHz
+    39: 19,  # 911.5 MHz
+    40: 21,  # 912.5 MHz
+    41: 23,  # 913.5 MHz
+    42: 25,  # 914.5 MHz
+    43: 27,  # 915.5 MHz
+    44: 29,  # 916.5 MHz
+    45: 31,  # 917.5 MHz
+    46: 33,  # 918.5 MHz
+    47: 35,  # 919.5 MHz
+    48: 37,  # 920.5 MHz
+    149: 39, # 921.5 MHz
+    150: 41, # 922.5 MHz
+    151: 43, # 923.5 MHz
+    152: 45, # 924.5 MHz
+    100: 47, # 925.5 MHz
+    104: 49, # 926.5 MHz
+    108: 51, # 927.5 MHz
+    # 2 MHz Bandwidth Channels
+    2: 2,    # 903.0 MHz
+    6: 6,    # 905.0 MHz
+    10: 10,  # 907.0 MHz
+    153: 14, # 909.0 MHz
+    154: 18, # 911.0 MHz
+    155: 22, # 913.0 MHz
+    156: 26, # 915.0 MHz
+    157: 30, # 917.0 MHz
+    158: 34, # 919.0 MHz
+    159: 38, # 921.0 MHz
+    160: 42, # 923.0 MHz
+    161: 46, # 925.0 MHz
+    112: 50, # 927.0 MHz
+    # 4 MHz Bandwidth Channels
+    8: 8,    # 906.0 MHz
+    162: 16, # 910.0 MHz
+    163: 24, # 914.0 MHz
+    164: 32, # 918.0 MHz
+    165: 40, # 922.0 MHz
+    116: 48  # 926.0 MHz
+}
+CHANNEL_TO_BANDWIDTH = {
+    1: 1,
+    3: 1,
+    5: 1,
+    7: 1,
+    9: 1,
+    11: 1,
+    13: 1,
+    15: 1,
+    17: 1,
+    19: 1,
+    21: 1,
+    23: 1,
+    25: 1,
+    27: 1,
+    29: 1,
+    31: 1,
+    33: 1,
+    35: 1,
+    37: 1,
+    39: 1,
+    41: 1,
+    43: 1,
+    45: 1,
+    47: 1,
+    49: 1,
+    51: 1,
+    2: 2,
+    6: 2,
+    10: 2,
+    14: 2,
+    18: 2,
+    22: 2,
+    26: 2,
+    30: 2,
+    34: 2,
+    38: 2,
+    42: 2,
+    46: 2,
+    50: 2,
+    8: 4,
+    16: 4,
+    24: 4,
+    32: 4,
+    40: 4,
+    48: 4,
+    12: 8,
+    28: 8,
+    44: 8,
+    20: 16
+}
 
 PROGRESS_SPIN = ['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷']
 
@@ -39,7 +144,7 @@ def make_timestamp() -> str:
 
 def get_session_token(id_counter: int) -> str:
     authentication_response = None
-    for i in range(0, len(USERNAMES)):
+    for i in range(len(USERNAMES)):
         authentication_payload = {
             'jsonrpc': '2.0',
             'id': id_counter,
@@ -74,8 +179,8 @@ def get_device(session_token: str, id_counter: int) -> str:
         'method': 'call',
         'params': [ 
             session_token,
-            'session', 
-            'access',
+            'system', 
+            'board',
             {}
         ]
     }
@@ -85,13 +190,13 @@ def get_device(session_token: str, id_counter: int) -> str:
     while retry_counter < UBUS_RETRY_LIMIT:
         retry_counter += 1
         peer_status_response = requests.post(UBUS_JSONRPC_URL, json=get_devices_request).json()
-        if peer_status_response['result'][0] == 0 and peer_status_response['result'][1]['results'][0]['noise'] != 0:
+        if peer_status_response['result'][0] == 0 and peer_status_response['result'][1]['board_name']:
             break
         
-    if peer_status_response is None or peer_status_response['result'][0] != 0:
+    if peer_status_response is None or not peer_status_response['result'][1]['board_name']:
         raise Exception('Invalid response from OpenWRT UBUS')
 
-    return peer_status_response['result'][1]['results'][0]
+    return peer_status_response['result'][1]['board_name']
 
 def _get_peer_stats_raw(session_token: str, device: str, id_counter: int) -> dict:
     peer_status_request = {
@@ -102,32 +207,28 @@ def _get_peer_stats_raw(session_token: str, device: str, id_counter: int) -> dic
             session_token,
             'iwinfo', 
             'assoclist', 
-            {'device': device}
+            {'device': RADIO_NAMES[BOARD_NAMES.index(device)]}
         ] 
     }
+
+    start = time.time()
 
     retry_counter = 0
     peer_status_response = None
     while retry_counter < UBUS_RETRY_LIMIT:
         retry_counter += 1
         peer_status_response = requests.post(UBUS_JSONRPC_URL, json=peer_status_request).json()
-        if peer_status_response['result'][0] == 0 and peer_status_response['result'][1]['results'][0]['noise'] != 0:
+        if peer_status_response['result'][0] == 0 and peer_status_response['result'][1]['results'] and (peer_status_response['result'][1]['results'][0]['noise'] != 0 if device == BOARD_NAMES[0] else True):
             break
+
+    # finish = (time.time() - start) * 1000
         
-    if peer_status_response is None or peer_status_response['result'][0] != 0:
+    if peer_status_response is None or peer_status_response['result'][0] != 0 or not peer_status_response['result'][1]['results']:
         raise Exception('Invalid response from OpenWRT UBUS')
 
     return peer_status_response['result'][1]['results'][0]
-
-def get_bandwidth(session_token: str, device: str, id_counter: int) -> int:
-    peer_stats = _get_peer_stats_raw(session_token, device, id_counter)
-    if peer_stats is None:
-        print('ERROR: Failed to query channel bandwidth from OpenWRT UBUS.')
-        sys.exit(-1)
-    else:
-        return peer_stats['tx']['mhz']
-    
-def get_channel_and_txpower(session_token: str, id_counter: int) -> tuple[int, int]:
+        
+def get_channel_and_txpower(session_token: str, device: str, id_counter: int) -> tuple[int, int]:
     device_info_request = {
         'jsonrpc': '2.0',
         'id': id_counter,
@@ -136,7 +237,7 @@ def get_channel_and_txpower(session_token: str, id_counter: int) -> tuple[int, i
             session_token,
             'iwinfo', 
             'info', 
-            {'device': 'wlan0'}
+            {'device': RADIO_NAMES[BOARD_NAMES.index(device)]}
         ] 
     }
 
@@ -151,28 +252,30 @@ def get_channel_and_txpower(session_token: str, id_counter: int) -> tuple[int, i
         print('ERROR: Failed to query channel from OpenWRT UBUS. Terminating.')
         sys.exit(-1)
 
-    return (device_info_response['result'][1]['channel'], device_info_response['result'][1]['txpower'])
+    if device != BOARD_NAMES[1]:
+        return (device_info_response['result'][1]['channel'], device_info_response['result'][1]['txpower'])
+    else:
+        return (NRC_TO_HALOW_CHANNEL[device_info_response['result'][1]['channel']], device_info_response['result'][1]['txpower'])
 
 def get_peer_stats(session_token: str, device: str, id_counter: int) -> tuple:
     peer_stats_raw = _get_peer_stats_raw(session_token, device, id_counter)
     
-    peer_stats = []
-    peer_stats.append(time.time_ns())
-    peer_stats.append(peer_stats_raw['signal'])
-    peer_stats.append(peer_stats_raw['signal_avg'])
-    peer_stats.append(peer_stats_raw['noise'])
-    peer_stats.append(peer_stats_raw['rx']['mcs'])
-    peer_stats.append(peer_stats_raw['rx']['short_gi'])
-    peer_stats.append(peer_stats_raw['tx']['mcs'])
-    peer_stats.append(peer_stats_raw['tx']['short_gi'])
+    return (
+        time.time_ns(),
+        peer_stats_raw['signal'],
+        peer_stats_raw['signal_avg'],
+        peer_stats_raw['noise'] if peer_stats_raw['noise'] != 0 else -1,
+        peer_stats_raw['rx']['mcs'] if 'mcs' in peer_stats_raw['rx'] else -1,
+        peer_stats_raw['rx']['short_gi'] if 'short_gi'in peer_stats_raw['rx'] else -1,
+        peer_stats_raw['tx']['mcs'] if 'mcs' in peer_stats_raw['tx'] else -1,
+        peer_stats_raw['tx']['short_gi'] if 'short_gi' in peer_stats_raw['tx'] else -1
+    )
 
-    return tuple(peer_stats)
+def get_iperf3_throughput(bandwidth: int, device: str) -> str:
+    return f'{IPERF3_UDP_TEST_THROUGHPUTS[BOARD_NAMES.index(device)][int(math.log(bandwidth, 2))]}M'
 
-def get_iperf3_throughput(bandwidth: int) -> str:
-    return f'{IPERF3_UDP_TEST_THROUGHPUTS[int(math.log(bandwidth, 2))]}M'
-
-def get_iperf3_windows(bandwidth: int) -> str:
-    return f'{IPERF3_TCP_TEST_WINDOWS[int(math.log(bandwidth, 2))]}K'
+def get_iperf3_windows(bandwidth: int, device: str) -> str:
+    return f'{IPERF3_TCP_TEST_WINDOWS[BOARD_NAMES.index(device)][int(math.log(bandwidth, 2))]}K'
 
 def _write_out_stat_log_csv(path: str, stat_log: list) -> None:
     with open(f'{path}.csv', 'w') as file:
@@ -201,10 +304,10 @@ def main() -> None:
 
     id_counter = 0
     device = get_device(session_token, id_counter := id_counter + 1)
-    bandwidth = get_bandwidth(session_token, device, id_counter := id_counter + 1)
-    channel, txpower = get_channel_and_txpower(session_token, id_counter := id_counter + 1)
-
-    directory = f'./{make_timestamp()}_{bandwidth}MHz_CH{channel}_{txpower}dBM_halow_test'
+    channel, txpower = get_channel_and_txpower(session_token, device, id_counter := id_counter + 1)
+    bandwidth = CHANNEL_TO_BANDWIDTH[channel]
+    
+    directory = f'./results/{make_timestamp()}_{bandwidth}MHz_CH{channel}_{txpower}dBM_halow_test'
 
     os.mkdir(directory)
 
@@ -213,7 +316,7 @@ def main() -> None:
         'iperf3', '-J', '-u',
         '-c', SERVER_HALOW_IP,
         '-t', str(IPERF3_UDP_TEST_DURATION_SEC),
-        '-b', get_iperf3_throughput(bandwidth),
+        '-b', get_iperf3_throughput(bandwidth, device),
         '-i', str(UBUS_REPORT_RATE)
     ]
 
@@ -233,7 +336,10 @@ def main() -> None:
             noise = stat_log[-1][3]
             snr = rssi - noise
 
-            print(f'\033[2K\033[?25l{PROGRESS_SPIN[spinner_index]} Performing UDP test [{i + 1}/{IPERF3_TCP_TEST_COUNT}] (RSSI: {rssi}dBm, Noise Floor: {noise}dBm, SNR: {snr}dB, Previous Bitrate: {previous_udp_bitrate})', end='\r')
+            if device != BOARD_NAMES[1]:
+                print(f'\033[?7l\033[2K\033[?25l{PROGRESS_SPIN[spinner_index]} Performing UDP test [{i + 1}/{IPERF3_TCP_TEST_COUNT}] (RSSI: {rssi}dBm, Noise Floor: {noise}dBm, SNR: {snr}dB, Previous Bitrate: {previous_udp_bitrate})', end='\033[?7h\r')
+            else:
+                print(f'\033[?7l\033[2K\033[?25l{PROGRESS_SPIN[spinner_index]} Performing UDP test [{i + 1}/{IPERF3_TCP_TEST_COUNT}] (RSSI: {rssi}dBm, Previous Bitrate: {previous_udp_bitrate})', end='\033[?7h\r')
             spinner_index = (spinner_index + 1) % len(PROGRESS_SPIN)
 
             delta_time = time.time() - start_time
@@ -261,7 +367,7 @@ def main() -> None:
         'iperf3', '-J',
         '-c', SERVER_HALOW_IP,
         '-t', str(IPERF3_TCP_TEST_DURATION_SEC),
-        '-w', get_iperf3_windows(bandwidth),
+        '-w', get_iperf3_windows(bandwidth, device),
         '-i', str(UBUS_REPORT_RATE)
     ]
 
@@ -283,7 +389,10 @@ def main() -> None:
             noise = stat_log[-1][3]
             snr = rssi - noise
 
-            print(f'\033[2K\033[?25l{PROGRESS_SPIN[spinner_index]} Performing TCP test [{i + 1}/{IPERF3_TCP_TEST_COUNT}] (RSSI: {rssi}dBm, Noise Floor: {noise}dBm, SNR: {snr}dB, Previous Bitrate: {previous_tcp_bitrate}, Previous Average RTT: {previous_tcp_rtt})', end='\r')
+            if device != BOARD_NAMES[1]:
+                print(f'\033[?7l\033[2K\033[?25l{PROGRESS_SPIN[spinner_index]} Performing TCP test [{i + 1}/{IPERF3_TCP_TEST_COUNT}] (RSSI: {rssi}dBm, Noise Floor: {noise}dBm, SNR: {snr}dB, Previous Bitrate: {previous_tcp_bitrate}, Previous Average RTT: {previous_tcp_rtt})', end='\033[?7h\r')
+            else:
+                print(f'\033[?7l\033[2K\033[?25l{PROGRESS_SPIN[spinner_index]} Performing TCP test [{i + 1}/{IPERF3_TCP_TEST_COUNT}] (RSSI: {rssi}dBm, Previous Bitrate: {previous_tcp_bitrate}, Previous Average RTT: {previous_tcp_rtt})', end='\033[?7h\r')
             spinner_index = (spinner_index + 1) % len(PROGRESS_SPIN)
 
             delta_time = time.time() - start_time
@@ -335,7 +444,10 @@ def main() -> None:
             noise = temp_stat_log[-1][3]
             snr = rssi - noise
             
-            print(f'\033[2K\033[?25l{PROGRESS_SPIN[spinner_index]} Gathering ICMP Samples [{i}/{ICMP_PING_TEST_SAMPLES}] (RSSI: {rssi}dBm, Noise Floor: {noise}dBm, SNR: {snr}dB, Average Latency: {average_latency})', end='\r')
+            if device != BOARD_NAMES[1]:
+                print(f'\033[?7l\033[2K\033[?25l{PROGRESS_SPIN[spinner_index]} Gathering ICMP Samples [{i}/{ICMP_PING_TEST_SAMPLES}] (RSSI: {rssi}dBm, Noise Floor: {noise}dBm, SNR: {snr}dB, Average Latency: {average_latency})', end='\033[?7h\r')
+            else:
+                print(f'\033[?7l\033[2K\033[?25l{PROGRESS_SPIN[spinner_index]} Gathering ICMP Samples [{i}/{ICMP_PING_TEST_SAMPLES}] (RSSI: {rssi}dBm, Average Latency: {average_latency})', end='\033[?7h\r')
             spinner_index = (spinner_index + 1) % len(PROGRESS_SPIN)
 
             delta_time = time.time() - start_time
